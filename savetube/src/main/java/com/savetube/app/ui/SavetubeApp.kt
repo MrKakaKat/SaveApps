@@ -46,6 +46,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -660,31 +664,37 @@ private fun qualityName(q: Int): String = when (q) {
     else -> "${q}P"
 }
 
-/** Lets long videos be cut to the part that matters before downloading. */
+/**
+ * Lets long videos and live streams be cut to the part that matters. The two time fields and
+ * the slider show the same range; either can be used to change it.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RangePicker(vm: MainViewModel, duration: Long, live: Boolean) {
-    // For a live stream, times count back from the current moment.
-    val label = if (live) {
-        "−" + formatDuration(duration - vm.rangeStart).ifEmpty { "0:00" } + " – " +
-            (if (vm.rangeEnd >= duration) tr("сейчас", "now") else "−" + formatDuration(duration - vm.rangeEnd))
-    } else {
-        formatDuration(vm.rangeStart).ifEmpty { "0:00" } + " – " + formatDuration(vm.rangeEnd)
-    }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
-            if (live) tr("Эфир, доступно ", "Live, available ") + formatDuration(duration) else tr("Фрагмент", "Clip"),
+            if (live) tr("Эфир: доступно ", "Live: available ") + clock(duration) else tr("Фрагмент", "Clip"),
             color = TextDim, fontSize = 16.sp, modifier = Modifier.weight(1f)
-        )
-        Text(
-            label,
-            color = Cream, fontSize = 15.sp, fontWeight = FontWeight.Medium
         )
         if (vm.isPartial) {
             TextButton(onClick = { vm.rangeStart = 0; vm.rangeEnd = duration }) {
                 Text(tr("Весь", "Full"), color = Cream)
             }
         }
+    }
+    Spacer(Modifier.height(6.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TimeField(
+            label = tr("Начало", "Start"),
+            seconds = vm.rangeStart,
+            modifier = Modifier.weight(1f),
+        ) { vm.rangeStart = it.coerceIn(0, vm.rangeEnd - 1) }
+        Text("–", color = Cream, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 10.dp))
+        TimeField(
+            label = tr("Конец", "End"),
+            seconds = vm.rangeEnd,
+            modifier = Modifier.weight(1f),
+        ) { vm.rangeEnd = it.coerceIn(vm.rangeStart + 1, duration) }
     }
     RangeSlider(
         value = vm.rangeStart.toFloat()..vm.rangeEnd.toFloat(),
@@ -699,14 +709,75 @@ private fun RangePicker(vm: MainViewModel, duration: Long, live: Boolean) {
             thumbColor = Cream, activeTrackColor = Cream, inactiveTrackColor = Cream.copy(alpha = .25f)
         ),
     )
+    // Ends of the whole video / rewind window under the slider.
+    Row {
+        Text(
+            if (live) tr("Начало записи", "Recording start") else "0:00:00",
+            color = TextDim, fontSize = 12.sp, modifier = Modifier.weight(1f)
+        )
+        Text(
+            if (live) tr("Сейчас", "Now") + " · " + clock(duration) else clock(duration),
+            color = TextDim, fontSize = 12.sp
+        )
+    }
     Text(
         if (live) tr("Скачиваются только выбранные минуты эфира. Насколько далеко можно отмотать назад, решает YouTube.",
             "Only the chosen minutes of the stream are downloaded. YouTube decides how far back you can go.")
         else tr("Обрезка идёт по ближайшему ключевому кадру, поэтому начало может сдвинуться на пару секунд раньше.",
             "Cuts snap to the nearest keyframe, so the start may move a couple of seconds earlier."),
-        color = TextDim, fontSize = 12.sp, modifier = Modifier.padding(bottom = 14.dp)
+        color = TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp, bottom = 14.dp)
     )
 }
+
+/**
+ * A time entered as digits only, shown as чч:мм:сс the way a date field shows дд.мм.гггг.
+ * Focusing clears it for typing; the value is applied once all six digits are in, and leaving
+ * the field shows the current range again.
+ */
+@Composable
+private fun TimeField(label: String, seconds: Long, modifier: Modifier, onCommit: (Long) -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    var digits by remember { mutableStateOf(toDigits(seconds)) }
+    LaunchedEffect(seconds, focused) { if (!focused) digits = toDigits(seconds) }
+    val text = maskTime(digits)
+    OutlinedTextField(
+        value = TextFieldValue(text, selection = TextRange(text.length)),
+        onValueChange = { v ->
+            digits = v.text.filter { it.isDigit() }.take(6)
+            if (digits.length == 6) onCommit(fromDigits(digits))
+        },
+        label = { Text(label) },
+        placeholder = { Text(tr("чч:мм:сс", "hh:mm:ss")) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = modifier.onFocusChanged {
+            // Start typing from an empty field; the hint shows the expected format.
+            if (it.isFocused && !focused) digits = ""
+            focused = it.isFocused
+        },
+        textStyle = LocalTextStyle.current.copy(fontSize = 17.sp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Cream, unfocusedTextColor = Cream,
+            focusedBorderColor = Cream, unfocusedBorderColor = Outline,
+            focusedLabelColor = Cream, unfocusedLabelColor = TextDim, cursorColor = Cream,
+            focusedPlaceholderColor = TextDim, unfocusedPlaceholderColor = TextDim,
+        ),
+    )
+}
+
+private fun toDigits(sec: Long) = "%02d%02d%02d".format(sec / 3600, sec % 3600 / 60, sec % 60)
+
+private fun fromDigits(d: String): Long {
+    val h = d.substring(0, 2).toLong()
+    val m = d.substring(2, 4).toLong().coerceAtMost(59)
+    val s = d.substring(4, 6).toLong().coerceAtMost(59)
+    return h * 3600 + m * 60 + s
+}
+
+/** "1234" → "12:34", "123456" → "12:34:56". */
+private fun maskTime(d: String) = d.chunked(2).joinToString(":")
+
+private fun clock(sec: Long) = "%d:%02d:%02d".format(sec / 3600, sec % 3600 / 60, sec % 60)
 
 @Composable
 private fun Chip(text: String, modifier: Modifier = Modifier) {

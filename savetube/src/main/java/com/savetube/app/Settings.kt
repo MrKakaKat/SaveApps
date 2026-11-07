@@ -30,7 +30,7 @@ class Settings(context: Context) {
 
     var lang by mutableStateOf(Lang.valueOf(prefs.getString("lang", Lang.SYSTEM.name)!!))
         private set
-    var defaultKind by mutableStateOf(Kind.valueOf(prefs.getString("kind", Kind.AUDIO.name)!!))
+    var defaultKind by mutableStateOf(Kind.valueOf(prefs.getString("kind", Kind.VIDEO.name)!!))
         private set
     var videoQuality by mutableStateOf(prefs.getInt("video", ASK))
         private set
