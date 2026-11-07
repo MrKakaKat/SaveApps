@@ -15,7 +15,7 @@ enum class Kind { VIDEO, AUDIO }
 
 /** Current UI language; Compose re-reads it, so switching applies instantly. */
 object L {
-    var lang by mutableStateOf(Lang.SYSTEM)
+    var lang by mutableStateOf(Lang.EN)
     val en: Boolean
         get() = when (lang) {
             Lang.SYSTEM -> Locale.getDefault().language != "ru"
@@ -33,7 +33,7 @@ fun tr(ru: String, en: String) = if (L.en) en else ru
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
-    var lang by mutableStateOf(Lang.valueOf(prefs.getString("lang", Lang.SYSTEM.name)!!))
+    var lang by mutableStateOf(Lang.valueOf(prefs.getString("lang", Lang.EN.name)!!))
         private set
     var defaultKind by mutableStateOf(Kind.valueOf(prefs.getString("kind", Kind.VIDEO.name)!!))
         private set
