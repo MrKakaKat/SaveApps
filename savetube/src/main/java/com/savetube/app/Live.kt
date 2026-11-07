@@ -114,7 +114,10 @@ object Live {
             val buffer = ByteBuffer.allocate(4 * 1024 * 1024)
             val info = MediaCodec.BufferInfo()
             groups.forEachIndexed { g, segs ->
-                var last = -1L
+                // Timeline bookkeeping in source time (before [offset] is taken off).
+                var maxTime = -1L
+                var frame = 0L // shortest gap seen between samples, i.e. one frame
+                var prev = -1L
                 var shift = 0L
                 segs.forEach { seg ->
                     withExtractor(seg, inits[g], tmp) { ex ->
@@ -122,15 +125,21 @@ object Live {
                         while (true) {
                             val size = ex.readSampleData(buffer, 0)
                             if (size < 0) break
-                            // If a segment restarts its clock, continue the timeline after the previous one.
-                            if (firstInSegment && ex.sampleTime + shift <= last) shift = last + 20_000 - ex.sampleTime
-                            firstInSegment = false
-                            val time = (ex.sampleTime + shift - offset).coerceAtLeast(0)
-                            if (time > last || last < 0) {
-                                info.set(0, size, time, ex.sampleFlags)
-                                muxer.writeSampleData(tracks[g], buffer, info)
-                                last = time
+                            var t = ex.sampleTime + shift
+                            // A segment that restarts its clock lands well before what we already
+                            // have; continue right after it, one frame later, so neither track drifts.
+                            if (firstInSegment && maxTime >= 0 && t < maxTime - 1_000_000) {
+                                shift += maxTime + frame - t
+                                t = ex.sampleTime + shift
                             }
+                            firstInSegment = false
+                            if (prev >= 0 && t > prev && (frame == 0L || t - prev < frame)) frame = t - prev
+                            prev = t
+                            // Samples are written as they come: with B-frames timestamps are not in
+                            // order, and dropping those would make the picture stutter.
+                            info.set(0, size, (t - offset).coerceAtLeast(0), ex.sampleFlags)
+                            muxer.writeSampleData(tracks[g], buffer, info)
+                            if (t > maxTime) maxTime = t
                             ex.advance()
                         }
                     }
