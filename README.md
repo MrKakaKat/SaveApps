@@ -1,13 +1,11 @@
 # SaveApps
 
-Android-приложения для сохранения медиа, для личного пользования.
+Android apps for saving media, for personal use.
 
-| | |
-|---|---|
-| **Savex** | X (Twitter): видео, GIF, фото, звук |
-| **Savetok** | TikTok: видео без водяного знака, фото, звук |
-| **Savetube** | YouTube: видео, музыка с обложкой и тегами, библиотека аудио |
+- **Savex**: X (Twitter) videos, GIFs, photos and sound
+- **Savetok**: TikTok videos without watermark, photos and sound
+- **Savetube**: YouTube videos and music with cover and tags, clips of long videos and live streams, audio library
 
-**Скачать:** [Releases → Latest build](../../releases/tag/latest).
+Download the APKs from the [Latest build](../../releases/tag/latest) release.
 
-Все APK подписаны одним ключом из `keystore/`, поэтому новые версии ставятся поверх старых.
+All APKs are signed with the same key from `keystore/`, so new versions install over old ones.
