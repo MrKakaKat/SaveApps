@@ -60,7 +60,7 @@ object Media {
     }
 
     /** Stream URLs are bound to the YouTube client that produced them (the `c=` parameter). */
-    private fun userAgentFor(url: String): String {
+    fun userAgentFor(url: String): String {
         val client = Uri.parse(url).getQueryParameter("c").orEmpty().uppercase()
         return when {
             client.startsWith("IOS") -> YoutubeParsingHelper.getIosUserAgent(null)

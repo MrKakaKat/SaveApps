@@ -262,7 +262,8 @@ private fun PreviewCard(vm: MainViewModel) {
                 Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = .8f))
             )
         )
-        if (track.durationSec > 0) Chip(formatDuration(track.durationSec), Modifier.align(Alignment.TopStart).padding(10.dp))
+        if (track.live != null) Chip("● LIVE", Modifier.align(Alignment.TopStart).padding(10.dp))
+        else if (track.durationSec > 0) Chip(formatDuration(track.durationSec), Modifier.align(Alignment.TopStart).padding(10.dp))
         val p = vm.progress
         if (p != null) {
             Column(
@@ -534,7 +535,9 @@ private fun DownloadSheet(vm: MainViewModel) {
                 }
             }
             Spacer(Modifier.height(16.dp))
-            if (track.durationSec > MainViewModel.RANGE_FROM_SEC) RangePicker(vm, track.durationSec)
+            if (track.live != null || track.durationSec > MainViewModel.RANGE_FROM_SEC) {
+                RangePicker(vm, track.durationSec, live = track.live != null)
+            }
             Text(tr("Опции загрузки", "Download options"), color = TextDim, fontSize = 16.sp)
             Spacer(Modifier.height(12.dp))
             val options = vm.options()
@@ -660,11 +663,21 @@ private fun qualityName(q: Int): String = when (q) {
 /** Lets long videos be cut to the part that matters before downloading. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RangePicker(vm: MainViewModel, duration: Long) {
+private fun RangePicker(vm: MainViewModel, duration: Long, live: Boolean) {
+    // For a live stream, times count back from the current moment.
+    val label = if (live) {
+        "−" + formatDuration(duration - vm.rangeStart).ifEmpty { "0:00" } + " – " +
+            (if (vm.rangeEnd >= duration) tr("сейчас", "now") else "−" + formatDuration(duration - vm.rangeEnd))
+    } else {
+        formatDuration(vm.rangeStart).ifEmpty { "0:00" } + " – " + formatDuration(vm.rangeEnd)
+    }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(tr("Фрагмент", "Clip"), color = TextDim, fontSize = 16.sp, modifier = Modifier.weight(1f))
         Text(
-            formatDuration(vm.rangeStart).ifEmpty { "0:00" } + " – " + formatDuration(vm.rangeEnd),
+            if (live) tr("Эфир, доступно ", "Live, available ") + formatDuration(duration) else tr("Фрагмент", "Clip"),
+            color = TextDim, fontSize = 16.sp, modifier = Modifier.weight(1f)
+        )
+        Text(
+            label,
             color = Cream, fontSize = 15.sp, fontWeight = FontWeight.Medium
         )
         if (vm.isPartial) {
@@ -687,7 +700,9 @@ private fun RangePicker(vm: MainViewModel, duration: Long) {
         ),
     )
     Text(
-        tr("Обрезка идёт по ближайшему ключевому кадру, поэтому начало может сдвинуться на пару секунд раньше.",
+        if (live) tr("Скачиваются только выбранные минуты эфира. Насколько далеко можно отмотать назад, решает YouTube.",
+            "Only the chosen minutes of the stream are downloaded. YouTube decides how far back you can go.")
+        else tr("Обрезка идёт по ближайшему ключевому кадру, поэтому начало может сдвинуться на пару секунд раньше.",
             "Cuts snap to the nearest keyframe, so the start may move a couple of seconds earlier."),
         color = TextDim, fontSize = 12.sp, modifier = Modifier.padding(bottom = 14.dp)
     )

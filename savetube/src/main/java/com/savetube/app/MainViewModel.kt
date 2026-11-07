@@ -101,8 +101,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * option or the settings already name a default quality.
      */
     private fun prepare(t: Track) {
-        rangeStart = 0
         rangeEnd = t.durationSec
+        // For a live stream start with its last 10 minutes; the whole rewind window can be hours.
+        rangeStart = if (t.live != null) (t.durationSec - RANGE_FROM_SEC).coerceAtLeast(0) else 0
+        if (t.live != null) {
+            kind = if (settings.defaultKind == Kind.VIDEO && t.videoOptions.isNotEmpty()) Kind.VIDEO else Kind.AUDIO
+            optionIndex = defaultIndex(kind)
+            showSheet = true
+            return
+        }
         kind = if (settings.defaultKind == Kind.VIDEO && t.videoOptions.isNotEmpty()) Kind.VIDEO else Kind.AUDIO
         optionIndex = defaultIndex(kind)
         val single = t.audioOptions.size + t.videoOptions.size <= 1
@@ -145,11 +152,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun saveAudio(t: Track, option: DownloadOption, dir: File) {
-        val raw = File(dir, "a.mp4")
-        val total = option.sizeBytes ?: 0
-        Media.download(option.audioUrl, raw) { if (total > 0) progress = (it.toFloat() / total).coerceAtMost(1f) * 0.95f }
         val out = File(dir, "track.m4a")
-        Media.mux(listOf(raw), out, startUs(), endUs())
+        val live = t.live
+        if (live != null) {
+            val (from, to) = liveSegments(live)
+            val count = (to - from + 1).toFloat()
+            var done = 0
+            val segs = Live.download(option.audioUrl, from, to, dir, "a") { progress = (++done / count) * 0.95f }
+            Live.mux(listOf(segs), out)
+        } else {
+            val raw = File(dir, "a.mp4")
+            val total = option.sizeBytes ?: 0
+            Media.download(option.audioUrl, raw) { if (total > 0) progress = (it.toFloat() / total).coerceAtMost(1f) * 0.95f }
+            Media.mux(listOf(raw), out, startUs(), endUs())
+        }
         val cover = t.thumbnail?.let { Media.squareCover(it) }
         Media.writeTags(out, t.title, t.uploader, cover)
         val uri = storage.save(out, Storage.fileName(name(t.uploader, t.title) + rangeSuffix(), "m4a"), Kind.AUDIO)
@@ -162,6 +178,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun saveVideo(t: Track, option: DownloadOption, dir: File) {
+        val live = t.live
+        if (live != null) {
+            val (from, to) = liveSegments(live)
+            val count = 2 * (to - from + 1).toFloat()
+            var done = 0
+            val step: () -> Unit = { progress = (++done / count) * 0.95f }
+            val v = Live.download(option.videoUrl!!, from, to, dir, "v", step)
+            val a = Live.download(option.audioUrl, from, to, dir, "a", step)
+            val out = File(dir, "video.mp4")
+            Live.mux(listOf(v, a), out)
+            storage.save(out, Storage.fileName(t.title + rangeSuffix(), "mp4"), Kind.VIDEO)
+            progress = 1f
+            return
+        }
         val video = File(dir, "v.mp4")
         val audio = File(dir, "a.mp4")
         val total = option.sizeBytes ?: 0
@@ -231,6 +261,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteTrack(item: LibraryItem) {
         storage.delete(Uri.parse(item.uri))
         libraryItems = library.remove(item.id)
+    }
+
+    /** Segment numbers covering the chosen part of the rewind window. */
+    private fun liveSegments(live: LiveInfo): Pair<Long, Long> {
+        val from = live.firstSeq + rangeStart / live.segSec
+        val to = (live.firstSeq + (rangeEnd + live.segSec - 1) / live.segSec - 1).coerceIn(from, live.headSeq)
+        return from to to
     }
 
     private fun startUs() = if (isPartial) rangeStart * 1_000_000 else 0L

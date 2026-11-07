@@ -22,6 +22,8 @@ data class Track(
     val durationSec: Long,
     val audioOptions: List<DownloadOption>,
     val videoOptions: List<DownloadOption>,
+    /** Set for a stream that is still live; [durationSec] is then its rewind window. */
+    val live: LiveInfo? = null,
 )
 
 data class HistoryEntry(
