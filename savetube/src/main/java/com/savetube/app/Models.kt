@@ -9,6 +9,8 @@ data class DownloadOption(
     val badge: String,
     val audioUrl: String,
     val videoUrl: String? = null,
+    /** yt-dlp format selector; set only for options that come from the plugin. */
+    val format: String? = null,
     val sizeBytes: Long? = null,
     val height: Int = 0,
 )
@@ -24,6 +26,8 @@ data class Track(
     val videoOptions: List<DownloadOption>,
     /** Set for a stream that is still live; [durationSec] is then its rewind window. */
     val live: LiveInfo? = null,
+    /** Parsed by the yt-dlp plugin instead of Savetube itself; downloads go through it too. */
+    val viaPlugin: Boolean = false,
 )
 
 data class HistoryEntry(

@@ -3,6 +3,17 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- Same permission as in the yt-dlp plugin: only apps with our key can use the plugin. -->
+    <permission
+        android:name="com.savetube.permission.PLUGIN"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.savetube.permission.PLUGIN" />
+
+    <queries>
+        <package android:name="com.savetube.plugin" />
+    </queries>
 
     <application
         android:name=".SavetubeApplication"
@@ -25,5 +36,14 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

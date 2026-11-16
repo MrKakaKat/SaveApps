@@ -237,6 +237,31 @@ private fun UrlRow(vm: MainViewModel, onPaste: () -> Unit) {
             if (vm.loading || vm.progress != null) CircularProgressIndicator(Modifier.size(22.dp), color = OnCream, strokeWidth = 2.dp)
             else Text(tr("Загрузить", "Download"), fontSize = 17.sp, fontWeight = FontWeight.Medium)
         }
+        if (vm.pluginPrompt) {
+            // Shown after Savetube's own parser failed: the yt-dlp plugin may be able to open the link.
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = { vm.installPlugin() },
+                enabled = vm.pluginProgress == null,
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Option, contentColor = Cream,
+                    disabledContainerColor = Option.copy(alpha = .6f), disabledContentColor = Cream,
+                ),
+            ) {
+                val p = vm.pluginProgress
+                Text(
+                    if (p == null) tr("Скачать плагин yt-dlp", "Get yt-dlp plugin")
+                    else tr("Скачивание плагина", "Downloading plugin") + " ${(p * 100).toInt()}%",
+                    fontSize = 17.sp, fontWeight = FontWeight.Medium
+                )
+            }
+            Text(
+                tr("Работает без входа в аккаунт Google.", "Works without signing in to Google."),
+                color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)
+            )
+        }
     }
 }
 

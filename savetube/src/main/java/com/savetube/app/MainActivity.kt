@@ -25,7 +25,10 @@ class MainActivity : ComponentActivity() {
     // Since Android 10 the clipboard is readable only while the window has focus.
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) vm.onClipboard(readClipboard())
+        if (hasFocus) {
+            vm.refreshPlugin()
+            vm.onClipboard(readClipboard())
+        }
     }
 
     private fun handleShare(intent: Intent?) {

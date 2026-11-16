@@ -5,4 +5,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral(); maven("https://jitpack.io") }
 }
 rootProject.name = "SaveApps"
-include(":savex", ":savetok", ":savetube")
+include(":savex", ":savetok", ":savetube", ":savetube-plugin")

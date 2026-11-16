@@ -26,6 +26,7 @@ jobs:
           for app in savex savetok savetube; do
             cp $app/build/outputs/apk/release/*.apk "out/${app^}.apk"
           done
+          cp savetube-plugin/build/outputs/apk/release/*.apk out/SavetubePlugin.apk
       - uses: actions/upload-artifact@v4
         with:
           name: apks

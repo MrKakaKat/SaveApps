@@ -12,7 +12,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
 import java.io.File
+import java.io.IOException
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val history = History(app)
@@ -25,6 +27,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var error by mutableStateOf<String?>(null)
     var message by mutableStateOf<String?>(null)
+
+    /** Savetube's own parser failed and the yt-dlp plugin is not installed: offer it. */
+    var pluginPrompt by mutableStateOf(false)
+        private set
+    var pluginProgress by mutableStateOf<Float?>(null)
+        private set
     var track by mutableStateOf<Track?>(null)
         private set
     var showSheet by mutableStateOf(false)
@@ -85,7 +93,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             loading = true
             error = null
             message = null
+            pluginPrompt = false
             runCatching { YtApi.fetch(url) }
+                .recoverCatching { e ->
+                    // A network problem will not be cured by another parser; anything else may be.
+                    if (e is CancellationException || (e is IOException && e !is ReCaptchaException)) throw e
+                    val app = getApplication<Application>()
+                    if (PluginClient.isInstalled(app)) PluginClient.info(app, url)
+                    else { pluginPrompt = true; throw e }
+                }
                 .onSuccess { t ->
                     track = t
                     historyItems = history.add(HistoryEntry(t.id, t.url, t.thumbnail.orEmpty(), t.title, t.uploader))
@@ -154,7 +170,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun saveAudio(t: Track, option: DownloadOption, dir: File) {
         val out = File(dir, "track.m4a")
         val live = t.live
-        if (live != null) {
+        if (t.viaPlugin) {
+            val (from, to) = pluginRange()
+            PluginClient.download(getApplication(), t, option, out, from, to) { progress = it * 0.95f }
+        } else if (live != null) {
             val (from, to) = liveSegments(live)
             val count = (to - from + 1).toFloat()
             var done = 0
@@ -179,6 +198,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun saveVideo(t: Track, option: DownloadOption, dir: File) {
         val live = t.live
+        if (t.viaPlugin) {
+            val (from, to) = pluginRange()
+            val out = File(dir, "video.mp4")
+            PluginClient.download(getApplication(), t, option, out, from, to) { progress = it * 0.95f }
+            storage.save(out, Storage.fileName(t.title + rangeSuffix(), "mp4"), Kind.VIDEO)
+            progress = 1f
+            return
+        }
         if (live != null) {
             val (from, to) = liveSegments(live)
             val count = 2 * (to - from + 1).toFloat()
@@ -207,6 +234,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         Media.mux(listOf(video, audio), out, startUs(), endUs())
         storage.save(out, Storage.fileName(t.title + rangeSuffix(), "mp4"), Kind.VIDEO)
         progress = 1f
+    }
+
+    /** Downloads the plugin APK and opens the system installer; Android asks to allow installs once. */
+    fun installPlugin() {
+        val app = getApplication<Application>()
+        if (pluginProgress != null) return
+        if (!PluginInstaller.canInstall(app)) {
+            message = tr("Разрешите установку из Savetube и нажмите кнопку ещё раз", "Allow installs from Savetube, then tap the button again")
+            PluginInstaller.openInstallPermission(app)
+            return
+        }
+        viewModelScope.launch {
+            error = null
+            message = null
+            pluginProgress = 0f
+            runCatching { PluginInstaller.download(app) { pluginProgress = it } }
+                .onSuccess { PluginInstaller.install(app, it) }
+                .onFailure { error = tr("Не удалось скачать плагин", "Could not download the plugin") + ": ${it.message}" }
+            pluginProgress = null
+        }
+    }
+
+    /** Called when the app regains focus: once the plugin is installed, open the link again with it. */
+    fun refreshPlugin() {
+        if (pluginPrompt && PluginClient.isInstalled(getApplication())) {
+            pluginPrompt = false
+            fetch()
+        }
     }
 
     fun cancelDownload() {
@@ -262,6 +317,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         storage.delete(Uri.parse(item.uri))
         libraryItems = library.remove(item.id)
     }
+
+    /** The chosen clip in seconds, or -1 for the whole video. */
+    private fun pluginRange() = if (isPartial) rangeStart to rangeEnd else -1L to -1L
 
     /** Segment numbers covering the chosen part of the rewind window. */
     private fun liveSegments(live: LiveInfo): Pair<Long, Long> {

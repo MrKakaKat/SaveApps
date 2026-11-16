@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Only apps signed with the same key (Savetube) can hold this and bind to the service. -->
+    <permission
+        android:name="com.savetube.permission.PLUGIN"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.savetube.permission.PLUGIN" />
+
+    <application
+        android:allowBackup="false"
+        android:extractNativeLibs="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Savetube yt-dlp">
+        <activity
+            android:name=".StatusActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name=".PluginService"
+            android:exported="true"
+            android:permission="com.savetube.permission.PLUGIN" />
+    </application>
+</manifest>
