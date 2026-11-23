@@ -107,7 +107,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     historyItems = history.add(HistoryEntry(t.id, t.url, t.thumbnail.orEmpty(), t.title, t.uploader))
                     prepare(t)
                 }
-                .onFailure { if (it !is CancellationException) error = it.message ?: tr("Не удалось открыть видео", "Could not open the video") }
+                .onFailure { if (it !is CancellationException) error = friendlyError(it.message) ?: tr("Не удалось открыть видео", "Could not open the video") }
             loading = false
         }
     }
@@ -161,7 +161,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .onSuccess {
                     message = if (option.kind == Kind.AUDIO) tr("Добавлено в библиотеку", "Added to the library") else tr("Видео сохранено", "Video saved")
                 }
-                .onFailure { if (it !is CancellationException) error = it.message ?: tr("Ошибка загрузки", "Download failed") }
+                .onFailure { if (it !is CancellationException) error = friendlyError(it.message) ?: tr("Ошибка загрузки", "Download failed") }
             withContext(Dispatchers.IO) { dir.deleteRecursively() }
             progress = null
         }

@@ -99,7 +99,16 @@ class PluginService : Service() {
     }
 
     private fun info(url: String): String {
-        val info = YoutubeDL.getInstance().getInfo(YoutubeDLRequest(url).addOption("--no-playlist"))
+        val info = try {
+            YoutubeDL.getInstance().getInfo(request(url, embedded = false))
+        } catch (e: Exception) {
+            // Age-gated videos sometimes play through the embedded-player clients without signing in.
+            if (!e.message.orEmpty().contains("confirm your age", true)) throw e
+            val retry = runCatching { YoutubeDL.getInstance().getInfo(request(url, embedded = true)) }
+            if (retry.isFailure) throw e // report the original, clearer error
+            embeddedUrls += url
+            retry.getOrThrow()
+        }
         val formats = info.formats.orEmpty()
 
         val video = JSONArray()
@@ -129,6 +138,15 @@ class PluginService : Service() {
             .toString()
     }
 
+    /** Links that only opened through the embedded-player clients; downloads must use them too. */
+    private val embeddedUrls = ConcurrentHashMap.newKeySet<String>()
+
+    private fun request(url: String, embedded: Boolean): YoutubeDLRequest {
+        val req = YoutubeDLRequest(url).addOption("--no-playlist")
+        if (embedded) req.addOption("--extractor-args", "youtube:player_client=tv_embedded,web_embedded")
+        return req
+    }
+
     private fun size(f: VideoFormat?): Long = f?.let { if (it.fileSize > 0) it.fileSize else it.fileSizeApproximate } ?: 0L
 
     private fun download(data: Bundle, reply: Messenger): String {
@@ -139,8 +157,8 @@ class PluginService : Service() {
         val target = Uri.parse(data.getString(Protocol.URI)!!)
         val dir = File(cacheDir, "dl/${System.nanoTime()}").apply { mkdirs() }
         try {
-            val req = YoutubeDLRequest(data.getString(Protocol.URL)!!)
-                .addOption("--no-playlist")
+            val url = data.getString(Protocol.URL)!!
+            val req = request(url, embedded = url in embeddedUrls)
                 .addOption("--no-mtime")
                 .addOption("-f", data.getString(Protocol.FORMAT)!!)
                 .addOption("-o", "${dir.absolutePath}/out.%(ext)s")
