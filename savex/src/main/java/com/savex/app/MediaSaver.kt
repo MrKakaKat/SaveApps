@@ -8,13 +8,22 @@ import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.media.MediaMuxer
 import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.media3.common.MediaItem
+import androidx.media3.transformer.Composition
+import androidx.media3.transformer.ExportException
+import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.Transformer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.ByteBuffer
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Saves videos, GIFs (X serves them as silent MP4) and photos into the gallery.
@@ -33,7 +42,7 @@ object MediaSaver {
             if (item.type == MediaType.GIF) "_gif" else ""
         val dir = File(context.cacheDir, "media/${System.nanoTime()}").apply { mkdirs() }
         try {
-            val src = File(dir, "src")
+            val src = File(dir, if (item.type == MediaType.PHOTO) "src" else "src.mp4")
             val type = AudioSaver.download(variant.url, src, onProgress)
             // Refuse to save something that is not media (an error page, an empty reply) and say
             // exactly what came back, instead of leaving a broken file in the gallery.
@@ -51,6 +60,9 @@ object MediaSaver {
                 val clean = File(dir, "clean.mp4")
                 val file = when {
                     runCatching { remux(src, clean) }.isSuccess && readable(clean) -> clean
+                    // Android's own MP4 parser rejects some files (X GIFs) that players handle
+                    // fine; Media3 reads them with ExoPlayer's parser and writes a clean MP4.
+                    runCatching { rewrite(context, src, clean.apply { delete() }) }.isSuccess && readable(clean) -> clean
                     readable(src) -> src
                     else -> {
                         // Keep the original so it can be examined; it is not put into the gallery.
@@ -110,6 +122,24 @@ object MediaSaver {
         } finally {
             runCatching { muxer.release() }
             extractor.release()
+        }
+    }
+
+    private suspend fun rewrite(context: Context, src: File, dest: File) = withContext(Dispatchers.Main) {
+        suspendCancellableCoroutine { cont ->
+            val transformer = Transformer.Builder(context)
+                .addListener(object : Transformer.Listener {
+                    override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                        if (cont.isActive) cont.resume(Unit)
+                    }
+
+                    override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
+                        if (cont.isActive) cont.resumeWithException(exportException)
+                    }
+                })
+                .build()
+            transformer.start(MediaItem.fromUri(Uri.fromFile(src)), dest.absolutePath)
+            cont.invokeOnCancellation { android.os.Handler(android.os.Looper.getMainLooper()).post { transformer.cancel() } }
         }
     }
 
