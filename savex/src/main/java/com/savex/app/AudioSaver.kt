@@ -38,11 +38,13 @@ object AudioSaver {
             }
         }
 
-    suspend fun download(url: String, dest: File, onProgress: (Float) -> Unit) {
+    /** Downloads [url] into [dest] and returns the server's Content-Type. */
+    suspend fun download(url: String, dest: File, onProgress: (Float) -> Unit): String {
         val req = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0 (Linux; Android 14)").build()
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")
             val body = resp.body ?: throw IllegalStateException("HTTP ${resp.code}")
+            val type = resp.header("Content-Type").orEmpty()
             val total = body.contentLength()
             var done = 0L
             val buf = ByteArray(64 * 1024)
@@ -58,6 +60,7 @@ object AudioSaver {
                     }
                 }
             }
+            return type
         }
     }
 

@@ -28,13 +28,20 @@ object MediaSaver {
     suspend fun save(
         context: Context, post: Post, index: Int, item: MediaItem, variant: MediaVariant,
         onProgress: (Float) -> Unit,
-    ) = withContext(Dispatchers.IO) {
+    ): Long = withContext(Dispatchers.IO) {
         val base = "${APP_FOLDER.lowercase()}_${post.authorHandle}_${post.id}_${index + 1}" +
             if (item.type == MediaType.GIF) "_gif" else ""
         val dir = File(context.cacheDir, "media/${System.nanoTime()}").apply { mkdirs() }
         try {
             val src = File(dir, "src")
-            AudioSaver.download(variant.url, src, onProgress)
+            val type = AudioSaver.download(variant.url, src, onProgress)
+            // Refuse to save something that is not media (an error page, an empty reply) and say
+            // exactly what came back, instead of leaving a broken file in the gallery.
+            val details = "${src.length()} B, ${type.ifEmpty { "?" }}, ${variant.url.substringBefore('?').takeLast(60)}"
+            val notMedia = type.startsWith("text/") || "json" in type || "html" in type
+            if (src.length() < 1024 || notMedia) {
+                throw IllegalStateException(tr("Сервер вернул не файл", "The server did not return a media file") + ": $details")
+            }
             if (item.type == MediaType.PHOTO) {
                 val ext = variant.url.substringBefore('?').substringAfterLast('.').lowercase()
                     .takeIf { it in listOf("jpg", "jpeg", "png", "webp") } ?: "jpg"
@@ -42,9 +49,15 @@ object MediaSaver {
             } else {
                 // If the rewrite fails or gives an unreadable file, the original is still saved.
                 val clean = File(dir, "clean.mp4")
-                val file = if (runCatching { remux(src, clean) }.isSuccess && readable(clean)) clean else src
+                val file = when {
+                    runCatching { remux(src, clean) }.isSuccess && readable(clean) -> clean
+                    readable(src) -> src
+                    else -> throw IllegalStateException(tr("Файл не читается как видео", "The file is not a playable video") + ": $details")
+                }
                 publish(context, file, "$base.mp4", "video/mp4", photo = false)
+                return@withContext file.length()
             }
+            src.length()
         } finally {
             dir.deleteRecursively()
         }

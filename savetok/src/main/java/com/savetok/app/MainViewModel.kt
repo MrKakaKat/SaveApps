@@ -130,13 +130,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             error = null
             message = null
             progress = 0f
+            var bytes = 0L
             runCatching {
                 chosen.forEachIndexed { n, i ->
                     val item = p.media[i]
                     val step: (Float) -> Unit = { f -> progress = (n + f) / chosen.size }
                     if (video) {
                         val variant = item.variants.getOrNull(quality[i] ?: 0) ?: return@forEachIndexed
-                        MediaSaver.save(getApplication(), p, i, item, variant, step)
+                        bytes += MediaSaver.save(getApplication(), p, i, item, variant, step)
                     } else {
                         val variant = item.audio.getOrNull(audioQuality[i] ?: 0) ?: return@forEachIndexed
                         val name = "${APP_FOLDER.lowercase()}_${p.authorHandle}_${p.id}_${i + 1}"
@@ -145,7 +146,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
                 .onSuccess {
-                    message = if (video) tr("Сохранено в галерею (Movies/$APP_FOLDER)", "Saved to the gallery (Movies/$APP_FOLDER)")
+                    message = if (video) tr("Сохранено в галерею (Movies/$APP_FOLDER)", "Saved to the gallery (Movies/$APP_FOLDER)") + ", " + sizeText(bytes)
                     else tr("Аудио сохранено в Музыка/$APP_FOLDER", "Audio saved to Music/$APP_FOLDER")
                 }
                 .onFailure { if (it !is CancellationException) error = it.message ?: tr("Ошибка загрузки", "Download failed") }
@@ -166,4 +167,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         history.clear()
         historyItems = emptyList()
     }
+
+    private fun sizeText(bytes: Long): String =
+        if (bytes >= 1_048_576) "%.1f %s".format(bytes / 1_048_576.0, tr("МБ", "MB"))
+        else "${bytes / 1024} " + tr("КБ", "KB")
 }
