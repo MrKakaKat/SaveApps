@@ -52,7 +52,14 @@ object MediaSaver {
                 val file = when {
                     runCatching { remux(src, clean) }.isSuccess && readable(clean) -> clean
                     readable(src) -> src
-                    else -> throw IllegalStateException(tr("Файл не читается как видео", "The file is not a playable video") + ": $details")
+                    else -> {
+                        // Keep the original so it can be examined; it is not put into the gallery.
+                        val kept = runCatching { keepRaw(context, src, "${base}_raw.mp4") }.isSuccess
+                        throw IllegalStateException(
+                            tr("Файл не читается как видео", "The file is not a playable video") + ": $details" +
+                                if (kept) tr(". Исходник сохранён в Download/$APP_FOLDER", ". The original was saved to Download/$APP_FOLDER") else ""
+                        )
+                    }
                 }
                 publish(context, file, "$base.mp4", "video/mp4", photo = false)
                 return@withContext file.length()
@@ -115,6 +122,23 @@ object MediaSaver {
             retriever.release()
         }
     }.getOrDefault(false)
+
+    /** Saves a file Android cannot read into Download/<app> as a plain file, so the user can pass it on. */
+    private fun keepRaw(context: Context, file: File, name: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/$APP_FOLDER")
+            }
+            val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)!!
+            context.contentResolver.openOutputStream(uri)!!.use { out -> file.inputStream().use { it.copyTo(out) } }
+        } else {
+            @Suppress("DEPRECATION")
+            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), APP_FOLDER).apply { mkdirs() }
+            file.copyTo(File(dir, name), overwrite = true)
+        }
+    }
 
     /** Puts the file into Movies/<app> or Pictures/<app> and registers it so it shows up everywhere. */
     private fun publish(context: Context, file: File, name: String, mime: String, photo: Boolean) {
