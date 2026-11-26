@@ -38,7 +38,7 @@ object AudioSaver {
             }
         }
 
-    private suspend fun download(url: String, dest: File, onProgress: (Float) -> Unit) {
+    suspend fun download(url: String, dest: File, onProgress: (Float) -> Unit) {
         val req = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0 (Linux; Android 14)").build()
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw IllegalStateException("HTTP ${resp.code}")

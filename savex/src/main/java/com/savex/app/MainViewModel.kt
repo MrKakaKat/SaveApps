@@ -124,15 +124,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val p = post ?: return
         showSheet = false
         val chosen = selected.sorted()
-        if (kind == Kind.VIDEO) {
-            chosen.forEach { i ->
-                val item = p.media[i]
-                val variant = item.variants.getOrNull(quality[i] ?: 0) ?: return@forEach
-                Downloader.enqueue(getApplication(), p, i, item, variant)
-            }
-            message = tr("Загрузка началась", "Download started")
-            return
-        }
+        val video = kind == Kind.VIDEO
         audioJob?.cancel()
         audioJob = viewModelScope.launch {
             error = null
@@ -141,12 +133,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             runCatching {
                 chosen.forEachIndexed { n, i ->
                     val item = p.media[i]
-                    val variant = item.audio.getOrNull(audioQuality[i] ?: 0) ?: return@forEachIndexed
-                    val name = "${APP_FOLDER.lowercase()}_${p.authorHandle}_${p.id}_${i + 1}"
-                    AudioSaver.save(getApplication(), variant, name) { f -> progress = (n + f) / chosen.size }
+                    val step: (Float) -> Unit = { f -> progress = (n + f) / chosen.size }
+                    if (video) {
+                        val variant = item.variants.getOrNull(quality[i] ?: 0) ?: return@forEachIndexed
+                        MediaSaver.save(getApplication(), p, i, item, variant, step)
+                    } else {
+                        val variant = item.audio.getOrNull(audioQuality[i] ?: 0) ?: return@forEachIndexed
+                        val name = "${APP_FOLDER.lowercase()}_${p.authorHandle}_${p.id}_${i + 1}"
+                        AudioSaver.save(getApplication(), variant, name, step)
+                    }
                 }
             }
-                .onSuccess { message = tr("Аудио сохранено в Музыка/$APP_FOLDER", "Audio saved to Music/$APP_FOLDER") }
+                .onSuccess {
+                    message = if (video) tr("Сохранено в галерею (Movies/$APP_FOLDER)", "Saved to the gallery (Movies/$APP_FOLDER)")
+                    else tr("Аудио сохранено в Музыка/$APP_FOLDER", "Audio saved to Music/$APP_FOLDER")
+                }
                 .onFailure { if (it !is CancellationException) error = it.message ?: tr("Ошибка загрузки", "Download failed") }
             progress = null
         }
