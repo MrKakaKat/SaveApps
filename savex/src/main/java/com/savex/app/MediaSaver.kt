@@ -12,7 +12,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
-import androidx.media3.common.MediaItem
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
@@ -138,7 +137,7 @@ object MediaSaver {
                     }
                 })
                 .build()
-            transformer.start(MediaItem.fromUri(Uri.fromFile(src)), dest.absolutePath)
+            transformer.start(androidx.media3.common.MediaItem.fromUri(Uri.fromFile(src)), dest.absolutePath)
             cont.invokeOnCancellation { android.os.Handler(android.os.Looper.getMainLooper()).post { transformer.cancel() } }
         }
     }
