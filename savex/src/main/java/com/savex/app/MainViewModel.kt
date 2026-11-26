@@ -137,7 +137,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val step: (Float) -> Unit = { f -> progress = (n + f) / chosen.size }
                     if (video) {
                         val variant = item.variants.getOrNull(quality[i] ?: 0) ?: return@forEachIndexed
-                        bytes += MediaSaver.save(getApplication(), p, i, item, variant, step)
+                        bytes += MediaSaver.save(getApplication(), p, i, item, variant, settings.gifAsGif, step)
                     } else {
                         val variant = item.audio.getOrNull(audioQuality[i] ?: 0) ?: return@forEachIndexed
                         val name = "${APP_FOLDER.lowercase()}_${p.authorHandle}_${p.id}_${i + 1}"
@@ -151,6 +151,48 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 .onFailure { if (it !is CancellationException) error = it.message ?: tr("Ошибка загрузки", "Download failed") }
             progress = null
+        }
+    }
+
+    /** Progress or result of "repair saved files", shown in the settings. */
+    var repairStatus by mutableStateOf<String?>(null)
+        private set
+    var repairing by mutableStateOf(false)
+        private set
+
+    /** Re-saves every MP4 in the chosen folder that Android cannot read, or that is a GIF. */
+    fun repair(tree: android.net.Uri) {
+        if (repairing) return
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            repairing = true
+            var fixed = 0
+            var unchanged = 0
+            var failed = 0
+            val docs = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                androidx.documentfile.provider.DocumentFile.fromTreeUri(app, tree)?.listFiles()
+                    ?.filter { it.isFile && it.name.orEmpty().lowercase().endsWith(".mp4") }.orEmpty()
+            }
+            docs.forEachIndexed { n, doc ->
+                repairStatus = tr("Ремонт", "Repairing") + " ${n + 1}/${docs.size}…"
+                runCatching {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        val dir = java.io.File(app.cacheDir, "repair/${System.nanoTime()}").apply { mkdirs() }
+                        try {
+                            val src = java.io.File(dir, "src.mp4")
+                            app.contentResolver.openInputStream(doc.uri)!!.use { input -> src.outputStream().use { input.copyTo(it) } }
+                            MediaSaver.repair(app, src, doc.name.orEmpty(), settings.gifAsGif).also { replaced -> if (replaced) doc.delete() }
+                        } finally {
+                            dir.deleteRecursively()
+                        }
+                    }
+                }.onSuccess { if (it) fixed++ else unchanged++ }.onFailure { failed++ }
+            }
+            repairStatus = tr(
+                "Готово: исправлено $fixed, без изменений $unchanged, ошибок $failed",
+                "Done: fixed $fixed, unchanged $unchanged, failed $failed"
+            )
+            repairing = false
         }
     }
 

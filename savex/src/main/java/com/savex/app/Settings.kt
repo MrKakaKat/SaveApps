@@ -42,6 +42,10 @@ class Settings(context: Context) {
     var audioQuality by mutableStateOf(prefs.getInt("audio", ASK))
         private set
 
+    /** Save X GIFs as real .gif files (true) or as the silent MP4 X serves (false). */
+    var gifAsGif by mutableStateOf(prefs.getBoolean("gifAsGif", true))
+        private set
+
     init {
         L.lang = lang
     }
@@ -60,6 +64,11 @@ class Settings(context: Context) {
     fun updateVideoQuality(value: Int) {
         videoQuality = value
         prefs.edit().putInt("video", value).apply()
+    }
+
+    fun updateGifAsGif(value: Boolean) {
+        gifAsGif = value
+        prefs.edit().putBoolean("gifAsGif", value).apply()
     }
 
     fun updateAudioQuality(value: Int) {

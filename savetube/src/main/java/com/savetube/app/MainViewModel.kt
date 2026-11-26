@@ -318,6 +318,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         libraryItems = library.remove(item.id)
     }
 
+    /** Share of the video inside the chosen clip, for size estimates. */
+    fun sizeFraction(): Double {
+        val d = track?.durationSec ?: return 1.0
+        return if (isPartial && d > 0) (rangeEnd - rangeStart).toDouble() / d else 1.0
+    }
+
     /** The chosen clip in seconds, or -1 for the whole video. */
     private fun pluginRange() = if (isPartial) rangeStart to rangeEnd else -1L to -1L
 

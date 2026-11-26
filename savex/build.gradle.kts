@@ -51,6 +51,7 @@ dependencies {
     // Reads MP4s that Android's own parser rejects (X GIFs) and writes them out cleanly.
     implementation("androidx.media3:media3-transformer:1.5.1")
     implementation("androidx.media3:media3-common:1.5.1")
+    implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 }

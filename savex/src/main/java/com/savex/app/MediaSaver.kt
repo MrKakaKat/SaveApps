@@ -35,7 +35,7 @@ import kotlin.coroutines.resumeWithException
 object MediaSaver {
     suspend fun save(
         context: Context, post: Post, index: Int, item: MediaItem, variant: MediaVariant,
-        onProgress: (Float) -> Unit,
+        gifAsGif: Boolean, onProgress: (Float) -> Unit,
     ): Long = withContext(Dispatchers.IO) {
         val base = "${APP_FOLDER.lowercase()}_${post.authorHandle}_${post.id}_${index + 1}" +
             if (item.type == MediaType.GIF) "_gif" else ""
@@ -72,6 +72,12 @@ object MediaSaver {
                         )
                     }
                 }
+                if (item.type == MediaType.GIF && gifAsGif) {
+                    val gif = File(dir, "out.gif")
+                    GifEncoder.fromVideo(file, gif)
+                    publish(context, gif, "$base.gif", "image/gif", photo = true)
+                    return@withContext gif.length()
+                }
                 publish(context, file, "$base.mp4", "video/mp4", photo = false)
                 return@withContext file.length()
             }
@@ -80,6 +86,50 @@ object MediaSaver {
             dir.deleteRecursively()
         }
     }
+
+    /**
+     * Re-saves one earlier download, passed in as [src] (a copy in the cache). Unreadable files
+     * are rewritten; silent clips (GIFs) become .gif when [gifAsGif]. The result goes to the
+     * gallery as "<name>_fixed". Returns false when the file was fine and is left alone.
+     */
+    suspend fun repair(context: Context, src: File, name: String, gifAsGif: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val dir = src.parentFile!!
+        val base = name.substringBeforeLast('.')
+        val fine = readable(src)
+        val clean = File(dir, "clean.mp4")
+        val file = when {
+            fine -> src
+            runCatching { remux(src, clean) }.isSuccess && readable(clean) -> clean
+            runCatching { rewrite(context, src, clean.apply { delete() }) }.isSuccess && readable(clean) -> clean
+            else -> throw IllegalStateException(tr("Файл не читается", "The file cannot be read") + ": $name")
+        }
+        val gifLike = "_gif" in name || !hasAudio(file)
+        when {
+            gifLike && gifAsGif -> {
+                val gif = File(dir, "out.gif")
+                GifEncoder.fromVideo(file, gif)
+                publish(context, gif, "${base}_fixed.gif", "image/gif", photo = true)
+                true
+            }
+            fine -> false
+            else -> {
+                publish(context, file, "${base}_fixed.mp4", "video/mp4", photo = false)
+                true
+            }
+        }
+    }
+
+    private fun hasAudio(file: File): Boolean = runCatching {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(file.absolutePath)
+            (0 until extractor.trackCount).any {
+                extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
+            }
+        } finally {
+            extractor.release()
+        }
+    }.getOrDefault(true)
 
     /** Copies every audio and video track into a fresh MP4 with timestamps starting at zero. */
     private fun remux(src: File, dest: File) {

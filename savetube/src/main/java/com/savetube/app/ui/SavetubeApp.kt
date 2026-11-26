@@ -597,7 +597,14 @@ private fun DownloadSheet(vm: MainViewModel) {
                             Spacer(Modifier.width(6.dp))
                             Text(o.label, color = Cream, fontSize = 19.sp, fontWeight = FontWeight.Medium)
                         }
-                        o.sizeBytes?.let { Text(formatSize(it), color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
+                        o.sizeBytes?.let {
+                            // A clip is roughly its share of the whole file.
+                            val part = vm.sizeFraction()
+                            Text(
+                                (if (part < 1.0) "≈ " else "") + formatSize((it * part).toLong()),
+                                color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
                     }
                 }
                 repeat(3 - chunk.size) { Spacer(Modifier.weight(1f)) }

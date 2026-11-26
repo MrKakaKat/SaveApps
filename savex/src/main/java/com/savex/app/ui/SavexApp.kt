@@ -2,6 +2,8 @@ package com.savex.app.ui
 
 import android.content.Intent
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -70,7 +72,7 @@ fun SavexApp(vm: MainViewModel, onPaste: () -> Unit) {
                 }
                 Screen.SETTINGS -> {
                     BackHandler { screen = Screen.HOME }
-                    SettingsScreen(vm.settings, onBack = { screen = Screen.HOME })
+                    SettingsScreen(vm, onBack = { screen = Screen.HOME })
                 }
             }
             if (vm.showSheet && vm.post != null) DownloadSheet(vm)
@@ -434,7 +436,11 @@ private fun OptionRow(options: List<Triple<String?, String, Long?>>, chosen: Int
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SettingsScreen(settings: Settings, onBack: () -> Unit) {
+private fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
+    val settings = vm.settings
+    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) vm.repair(uri)
+    }
     Column(Modifier.fillMaxSize().systemBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White) }
@@ -460,6 +466,31 @@ private fun SettingsScreen(settings: Settings, onBack: () -> Unit) {
                     ChoiceChip(qualityName(q), settings.audioQuality == q) { settings.updateAudioQuality(q) }
                 }
             }
+            SettingGroup(tr("Гифки сохранять как", "Save GIFs as")) {
+                ChoiceChip("GIF", settings.gifAsGif) { settings.updateGifAsGif(true) }
+                ChoiceChip(tr("Видео MP4", "MP4 video"), !settings.gifAsGif) { settings.updateGifAsGif(false) }
+            }
+            Text(
+                tr("Ремонт сохранённых файлов", "Repair saved files"),
+                color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(top = 16.dp, bottom = 6.dp)
+            )
+            Text(
+                tr(
+                    "Выберите папку Movies/$APP_FOLDER. Файлы, которые не открываются или не отправляются, будут пересохранены с пометкой _fixed, гифки — как GIF (если выбрано выше), а старые удалены.",
+                    "Pick the Movies/$APP_FOLDER folder. Files that do not open or send are saved again with _fixed in the name, GIFs as .gif (if chosen above), and the old ones are removed."
+                ),
+                color = TextDim, fontSize = 13.sp
+            )
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = { pickFolder.launch(null) },
+                enabled = !vm.repairing,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Accent),
+            ) { Text(tr("Выбрать папку и починить", "Choose folder and repair"), color = Color.White, fontSize = 15.sp) }
+            vm.repairStatus?.let { Text(it, color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
             Text(
                 tr(
                     "Если выбрано качество, загрузка начнётся сразу, без окна выбора. Когда такого качества нет, берётся ближайшее ниже, а если ниже нет — самое низкое из доступных.",
